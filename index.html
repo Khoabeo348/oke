@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nhận diện và Đếm Ngón Tay</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            color: white;
+            font-family: sans-serif;
+        }
+        /* Ẩn thẻ video gốc, chúng ta sẽ vẽ hình ảnh lên thẻ canvas */
+        .input_video {
+            display: none;
+        }
+        /* Canvas hiển thị toàn màn hình */
+        .output_canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Lật ngược video như gương để dễ nhìn */
+        }
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="status">Đang tải AI và Camera... Vui lòng chờ.</div>
+    
+    <video class="input_video" playsinline></video>
+    <canvas class="output_canvas"></canvas>
+
+    <script>
+        const videoElement = document.querySelector('.input_video');
+        const canvasElement = document.querySelector('.output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const statusText = document.getElementById('status');
+
+        // Hàm xử lý khi AI nhận diện được bàn tay
+        function onResults(results) {
+            statusText.style.display = 'none'; // Ẩn chữ đang tải
+
+            // Cập nhật kích thước canvas khớp với video
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Vẽ lại khung hình từ camera lên canvas
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    // Trong MediaPipe, các đầu ngón tay có số thứ tự sau:
+                    // 4: Ngón cái, 8: Ngón trỏ, 12: Ngón giữa, 16: Ngón áp út, 20: Ngón út
+                    const fingerTips = [4, 8, 12, 16, 20];
+
+                    // Cài đặt font chữ số
+                    canvasCtx.font = "bold 50px Arial";
+                    canvasCtx.fillStyle = "#00FF00"; // Màu xanh lá
+                    canvasCtx.textAlign = "center";
+                    canvasCtx.strokeStyle = "black";
+                    canvasCtx.lineWidth = 3;
+
+                    // Duyệt qua 5 đầu ngón tay và vẽ số
+                    fingerTips.forEach((tipIndex, index) => {
+                        const landmark = landmarks[tipIndex];
+                        // Tính toạ độ x, y trên màn hình
+                        const x = landmark.x * canvasElement.width;
+                        const y = landmark.y * canvasElement.height;
+
+                        const number = index + 1; // Số từ 1 đến 5
+
+                        // Vẽ số (có viền đen cho dễ đọc)
+                        canvasCtx.strokeText(number, x, y - 20);
+                        canvasCtx.fillText(number, x, y - 20);
+                    });
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        // Khởi tạo AI MediaPipe Hands
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        
+        hands.setOptions({
+            maxNumHands: 2, // Số tay tối đa nhận diện (tối đa 2 tay)
+            modelComplexity: 1,
+            minDetectionConfidence: 0.6,
+            minTrackingConfidence: 0.6
+        });
+        
+        hands.onResults(onResults);
+
+        // Mở Camera
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480,
+            facingMode: 'user' // 'user' là camera trước, đổi thành 'environment' nếu muốn dùng cam sau
+        });
+        
+        camera.start().catch(err => {
+            statusText.innerText = "Lỗi: Không thể truy cập Camera. Hãy cấp quyền nhé!";
+        });
+    </script>
+</body>
+</html>
